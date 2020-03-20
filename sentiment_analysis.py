@@ -32,6 +32,13 @@ class Twitter:
         api = tweepy.API(auth)
         return api
 
+def fetch_geo_code(location):
+    geo_code_url = f"https://api.opencagedata.com/geocode/v1/json?q={location}&key={OPEN_CAGE_KEY}"
+    response = requests.get(geo_code_url).json()
+    lat = response['results'][0]['geometry']['lat']
+    lng = response['results'][0]['geometry']['lng']
+    return lat,lng
+
 
 def analyse(search_term):
     api = Twitter().connect()
@@ -55,14 +62,24 @@ def analyse(search_term):
 
 
 @click.command()
-@click.argument('location')
-def main(location):
-    geo_code_url = f"https://api.opencagedata.com/geocode/v1/json?q={location}&key={OPEN_CAGE_KEY}"
-    response = requests.get(geo_code_url).json()
-    lat = response['results'][0]['geometry']['lat']
-    lng = response['results'][0]['geometry']['lng']
-    print(location)
-    results = analyse(f"Coronavirus geocode:{lat},{lng},50km -filter:retweets")
+@click.option('--location','-l')
+@click.option('--search_term','-s')
+def main(location,search_term):
+    search_string = "-filter:retweets"
+
+    if not search_term:
+        search_term = "Corona"
+
+    if not location:
+        search_string = f"{search_term} {search_string}"
+    else:
+        lat,lng = fetch_geo_code(location)
+        search_string = f"{search_term} geocode:{lat},{lng},50km {search_string}"
+    print(search_string)
+    results = analyse(search_string)
+    if not "mean_score" in results:
+        print("Insufficent data for a meaningfull answer")
+        return
     mean_score = results['mean_score']
     if mean_score < -0.05:
         print(colorize(f"Sentiment is generally negative {mean_score}",bcolors.FAIL))
@@ -70,9 +87,11 @@ def main(location):
         print(colorize(f"Sentiment seems generally positive {mean_score}",bcolors.OKGREEN))
     else:
         print(colorize(f"Sentiment seems neutral {mean_score}",bcolors.OKBLUE))
+
     print(colorize(f"Some top Positive tweets are:",bcolors.OKGREEN))
     for x in results['top_positive_tweets']:
         print(x[1])
+
     print(colorize(f"Some top negative tweets are:",bcolors.FAIL))
     for x in results['top_negative_tweets']:
         print(x[1])
